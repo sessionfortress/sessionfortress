@@ -1,9 +1,12 @@
 var https = require('https');
+var http = require('http');
 var fs = require('fs');
 var crypto = require('crypto');
 var url = require("url");
 var qs = require('querystring');
 var httpProxy = require('http-proxy');
+var jsdom = require("jsdom");
+
 var djcl = require('./djcl.js');
 var conf = require('./config.js');
 
@@ -190,14 +193,75 @@ srv.on('request', function (req, res) {
     else
     {
      console.log('Bad signature ' + m + ' for ' + o + ' with ' + (SID in DB ? DB[SID].key : '')+' of '+SID);
+     console.dir(sig);
     }
    }
   }
 
   if(authenticated)
   {
-   res.writeHead(200);
-   res.end('Request correctly authenticated');
+    var opt = url.parse(conf.backend_server+req.url);
+    opt.method = req.method == 'POST' ? 'POST' : 'GET';
+    opt.headers = req.headers;
+    delete opt.headers['accept-encoding'];
+
+    (opt.protocol == 'http:' ? http : https).request(opt, function(r){
+     r.setEncoding('utf8');
+     delete r.headers['content-length'];
+     var result = "";
+
+     r.on('data', function(c) {
+      result += c;
+     }).on('end', function(){
+      res.writeHead(r.statusCode, "OK", r.headers);
+      if(r.headers['content-type'].match(/text\/html/i))
+      {
+       jsdom.env(result, [],
+//        ["http://code.jquery.com/jquery.js"],
+        function (errors, window) {
+         if(window)
+         {
+           ['src','href','action'].forEach(function(x){
+           var n = window.document.querySelectorAll('*['+x+']');
+           var tld = conf.topdomain;
+           for(var i=0; i<n.length; i++)
+           {
+            var o = url.parse(n[i].getAttribute(x));
+            if(o.hostname == null) o.hostname = u.hostname;
+            if(o.protocol == null) o.protocol = u.protocol;
+            if(o.port == null) o.port = u.port;
+
+            if(o.protocol == 'http:' || o.protocol == 'https:')
+             if(o.hostname.substr(o.hostname.length-tld.length)==tld)
+              {
+               var m = (x == 'action' && n[i].method.toUpperCase()=='POST')?'POST':'GET';
+               m += '|'+url.format(o);
+               n[i].setAttribute(x, url.format(o)+'?'+encodeURIComponent(djcl.JWT.create(m, DB[SID].key)));
+              }
+           }
+          });
+          var i = window.document.createElement('iframe');
+          i.src = 'https://'+conf.login_domain+':'+conf.local_port+'/csrf-frame';
+          i.style.display = 'none';
+          window.document.body.appendChild(i);
+          var i = window.document.createElement('script');
+          i.src = 'https://'+conf.login_domain+':'+conf.local_port+'/inject.js';
+          window.document.head.insertBefore(i, window.document.head.firstChild);
+          res.end(window.document.innerHTML);
+          return;
+         }
+         else
+          console.log(errors);
+         res.end(result);
+        });
+      }
+      else
+      {
+       res.end(result);
+       return;
+      }
+     });
+    }).end(req.method == 'POST' ? body : undefined);
    return;
   }
   else

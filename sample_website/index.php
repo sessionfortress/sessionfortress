@@ -13,6 +13,10 @@ if(isset($_COOKIE['PHPSESSID']))
 }
 else $login = 0;
 
+if(isset($_POST['a']) && $login)
+{
+ die("Success! Wire of ".(int)$_POST['a']);
+}
 ?><!doctype html>
 <html>
 <head>
@@ -21,11 +25,23 @@ else $login = 0;
 <body>
 <h1>Hello</h1>
 <?php
-if($login)
+if(!$login)
 {
- echo 'You logged in on '.date('d M Y h:i');
+ echo "Click <a href=login.php>here to login</a>";
 }
-else echo "Click <a href=login.php>here to login</a>";
+else
+{
+ echo '<p>You logged in on '.date('d M Y h:i').'</p>';
+?>
+<form action="index.php" method="post">
+Make wire transfer: <input type="text" size="10" name="a" /><br />
+<input type="submit" />
+</form>
+<p>
+<a href='login.php?logout'>Logout</a>
+</p>
+<?php
+}
 ?>
 </body>
 </html>

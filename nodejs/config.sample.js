@@ -16,11 +16,14 @@ var config =
 	// The name of the session cookie
         session_cookie: 'PHPSESSID',
 
+	// The domain used by your session cookies
+	topdomain: 'x.com',
+
 	// Separate origin for the login page
-        login_domain: 'login.ht.vc',
+        login_domain: 'login.x.com',
 
 	// URL of the original login form (will be redirected)
-        login_page: "https://acsac.ht.vc/login.php",
+        login_page: "https://www.x.com/login.php",
 
 	// Content security policy of secure login origin
         login_csp: "script-src nonce-000000000000; frame-src 'none'; object-src 'none'",
