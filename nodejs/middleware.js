@@ -10,8 +10,11 @@ var jsdom = require("jsdom");
 var djcl = require('./djcl.js');
 var conf = require('./config.js');
 
+var loginorigin = 'https://'+conf.login_domain+(conf.local_port!=443?':'+conf.local_port:'');
 var loginscript = fs.readFileSync('login.js').toString('utf-8');
-var injected = fs.readFileSync('csrf.js');
+var injected = fs.readFileSync('csrf.js').toString('utf-8')
+                 .replace('@LOGIN_ORIGIN@', loginorigin)
+                 .replace('@TOP_DOMAIN@',conf.topdomain);
 var frame = fs.readFileSync('csrf.html');
 
 /*********** END OF CONFIGURATION ***************/
@@ -62,7 +65,7 @@ srv.on('request', function (req, res) {
 
   if(u.hostname == login.hostname && u.pathname == login.pathname)
   {
-   res.writeHead(302, "Found", {'location':'https://'+conf.login_domain+':'+conf.local_port+'/login'});
+   res.writeHead(302, "Found", {'location': loginorigin + '/login'});
    res.end("Redirecting ...");
    return;
   }
@@ -71,8 +74,13 @@ srv.on('request', function (req, res) {
   {
    console.log("Login origin request: "+req.url);
    if(u.pathname == "/csrf-frame") {
-    res.writeHead(200, "Found", {"X-Frame-Options": "allow"});
+    res.writeHead(200, "Found", {'Content-Type':'text/html; charset=utf-8'});
     res.end(frame);
+    return;
+   }
+   if(u.pathname == "/injected.js") {
+    res.writeHead(200, "Found", {'Content-Type':'application/javascript; charset=utf-8'});
+    res.end(injected);
     return;
    }
    if(u.pathname == "/login") {
@@ -83,7 +91,7 @@ srv.on('request', function (req, res) {
     if(req.method == 'POST' && ref.hostname != conf.login_domain)
     {
      res.writeHead(403, "Login CSRF");
-     res.end("This login form can only be submitted through https://"+conf.login_domain);
+     res.end("This login form can only be submitted through "+login_origin);
      return;
     }
 
@@ -192,8 +200,8 @@ srv.on('request', function (req, res) {
     }
     else
     {
-     console.log('Bad signature ' + m + ' for ' + o + ' with ' + (SID in DB ? DB[SID].key : '')+' of '+SID);
-     console.dir(sig);
+     console.log('Bad signature ' + m + ' for ' + o + ' with ' + (SID in DB ? DB[SID].key : '')+' of '+SID+('claims' in sig?': '+sig.claims:''));
+     console.dir(DB);
     }
    }
   }
@@ -231,21 +239,24 @@ srv.on('request', function (req, res) {
             if(o.protocol == null) o.protocol = u.protocol;
             if(o.port == null) o.port = u.port;
 
-            if(o.protocol == 'http:' || o.protocol == 'https:')
+            if(o.protocol == 'https:')
              if(o.hostname.substr(o.hostname.length-tld.length)==tld)
               {
                var m = (x == 'action' && n[i].method.toUpperCase()=='POST')?'POST':'GET';
-               m += '|'+url.format(o);
-               n[i].setAttribute(x, url.format(o)+'?'+encodeURIComponent(djcl.JWT.create(m, DB[SID].key)));
+               m += '|' + url.format(o);
+               n[i].setAttribute(x,
+                 url.format(o)+'?'+encodeURIComponent(djcl.JWT.create(m, DB[SID].key))
+               );
               }
            }
           });
           var i = window.document.createElement('iframe');
-          i.src = 'https://'+conf.login_domain+':'+conf.local_port+'/csrf-frame';
+          i.src = loginorigin + '/csrf-frame';
           i.style.display = 'none';
+          i.id = 'csrf-frame';
           window.document.body.appendChild(i);
           var i = window.document.createElement('script');
-          i.src = 'https://'+conf.login_domain+':'+conf.local_port+'/inject.js';
+          i.src = loginorigin + '/injected.js';
           window.document.head.insertBefore(i, window.document.head.firstChild);
           res.end(window.document.innerHTML);
           return;

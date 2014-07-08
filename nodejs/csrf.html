@@ -15,7 +15,10 @@ window.addEventListener('message', function(e) {
   parser.href = d.url;
 
   if(toprelated(parser.hostname) && ({'GET':1,'POST':1}).hasOwnProperty(d.method))
-   s.postMessage(JWT.create(d.method+'|'+d.url, localStorage.CSRF), o);
+   s.postMessage(JSON.stringify({
+    id: d.id,
+    sig: JWT.create(d.method+'|'+d.url, localStorage.CSRF)
+   }), o);
  } 
 });
 
