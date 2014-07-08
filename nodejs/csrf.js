@@ -31,7 +31,7 @@
 
   var sigRequest = function(id, met, url) {
    w.postMessage(JSON.stringify({id:id, method: met, url: url}), loginorigin);
-  }
+  };
 
   var fixattr = function(tag, attr){
    var v = tag.getAttribute(attr);
@@ -41,22 +41,61 @@
     tag.setAttribute(attr, v+'?'+sig);
    }
    sigRequest(c, attr == 'action' ? 'POST' : 'GET', url);
-  }
+  };
 
- var attachAttr = function(tag) {
-  ['src','href','action'].forEach(function(x){
-   var n = tag.querySelectorAll('* ['+x+']');
-   for(var i=0; i<n.length; i++)
-   {
-    var t = n[i];
-    if(t.tagName == 'FORM' && x == 'action' && t.method != 'post')
-    {
-     // GET FORM
+  var checkForm = function(f) {
+   if(f.__csrfOK) return;
+   if(f.method == 'post') return;
+
+   f.addEventListener('submit', function(e) {
+    if(this.__signed){ this.__signed = false; return; }
+    if(this.method == 'post') return;
+
+    var e = this.elements, qs = '?';
+    for(var i = 0; i<e.length; i++) {
+     var n = e[i];
+     if(n.name == '__csrf') {
+      n.parentElement.removeChild(n); continue;
+     }
+     if (n.name)
+      qs += encodeURIComponent(n.name)+'='+encodeURIComponent(n.value)+'&';
     }
-    else fixattr(t, x);
-   }
-  });
- }
+    qs = qs.substr(0,qs.length-1);
+
+    var sig = document.createElement('input');
+    sig.type = 'hidden';
+    sig.name = '__csrf';
+    f.appendChild(sig);
+
+    queue[++c] = function(s){
+     f.__signed = true;
+     sig.value = s;
+     f.submit();
+    }
+    parser.href = f.action;
+    var url = parser.origin+parser.pathname+qs;
+    sigRequest(c, 'GET', url);
+
+    // Delay until form is signed
+    e.preventDefault();
+   });
+
+   f.__csrfOK = true;
+  };
+
+  var attachAttr = function(tag) {
+   ['src','href','action'].forEach(function(x){
+    var n = tag.querySelectorAll('* ['+x+']');
+    for(var i=0; i<n.length; i++)
+    {
+     var t = n[i];
+     if(t.tagName == 'FORM' && t.method != 'post')
+      checkForm(t);
+     else
+      fixattr(t, x);
+    }
+   });
+  };
 
   var observer = new MutationObserver(function(mutations) {
    mutations.forEach(function(mutation) {
@@ -64,9 +103,17 @@
      attachAttr(mutation.target);
     else
     {
-//     var t = mutation.target, x = mutation.attributeName;
-//     if(t.tagName != 'FORM' || t.method == 'post')
-//      fixattr(t, x);
+     var t = mutation.target, x = mutation.attributeName;
+
+     if(t.tagName == 'FORM' && x == 'method')
+     {
+      if(t.method == 'post') attachAttr(t);
+      else checkForm(t);
+      return;
+     }
+
+     if(t.tagName != 'FORM' || t.method == 'post')
+      fixattr(t, x);
     }
    });
   });
@@ -76,7 +123,7 @@
    childList: true,
    subtree: true,
    characterData: false,
-   attributeFilter: ['src','href','action']
+   attributeFilter: ['src','href','action','method']
   };
 
   observer.observe(document, config);
@@ -90,13 +137,13 @@
     XHRopen.apply(_this, arguments);
     this.__ready = true;
     return;
-   }
+   };
 
    this.__ready = false;
    queue[++c] = function(sig){
     XHRopen.apply(_this, [method, url+'?'+sig, async, user, pass]);
     _this.__ready = true;
-   }
+   };
 
    console.log('AJAX sig request for '+sign);
    sigRequest(c, method.toUpperCase(), sign);
@@ -113,6 +160,11 @@
      setTimeout(d, 10);
    })();
   }
+
+  // Add GET form handlers
+  var fr = document.forms;
+  for(var i = 0; i<fr.length; i++)
+   checkForm(fr[i]);
  });
 
 })();

@@ -50,6 +50,14 @@ var tls_options = {
 var srv = https.createServer(tls_options);
 var proxy = httpProxy.createProxyServer({target:conf.backend_server});
 
+srv.on('error', function(e){
+ console.log('HTTPS server error: '+e);
+});
+
+proxy.on('error', function(e){
+ console.log('Proxy error: '+e);
+});
+
 srv.on('request', function (req, res) {
   req.setEncoding('utf8');
 
@@ -184,11 +192,11 @@ srv.on('request', function (req, res) {
 
   if(!conf.authenticated_paths || u.pathname.match(conf.authenticated_paths))
   {
-   var m = req.url.match(/\?[a-zA-Z0-9._-]+$/);
+   var m = req.url.match(/([?]|[?&]__csrf=)([a-zA-Z0-9._-]{80,})$/);
    if(m)
    {
-    m = m[0].substr(1);
-    req.url = req.url.replace('?'+m, '');
+    req.url = req.url.replace(m[0], '');
+    m = m[2];
 
     var o = req.method+"|https://"+host+req.url;
     var sig = djcl.JWT.parse(m, SID in DB ? DB[SID].key : '');

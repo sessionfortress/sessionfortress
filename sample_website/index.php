@@ -47,6 +47,14 @@ Make wire transfer: <input type="text" size="10" name="a" /><br />
 </form>
 </fieldset>
 
+<fieldset><legend>GET form (dynamic)</legend>
+<form action="index.php" method="get">
+<p id="gf"></p>
+<input type="button" value="Add field" onclick="var a = document.createElement('input');a.type='text';a.name='field'+(1000*Math.random()|0);document.getElementById('gf').appendChild(a);" />
+<input type="submit" />
+</form>
+</fieldset>
+
 <fieldset><legend>Dynamic DOM mutations</legend>
 <input type="text" value="/test" size="50" id="v" />
 <input type="button" value="Insert link" onclick="var x = document.getElementById('v').value;var a = document.createElement('a');a.href=x;a.innerHTML='Test link<br />';document.getElementById('t').appendChild(a);" />
