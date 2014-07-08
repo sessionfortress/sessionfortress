@@ -3,7 +3,13 @@
  var queue = [];
  var loginorigin = '@LOGIN_ORIGIN@';
  var topdomain = '@TOP_DOMAIN@';
+ var apaths = @AUTHENTICATED_PATHS@;
  var parser = document.createElement('a');
+
+// Invisible CSF token - breaks back button
+// var l = location.href;
+// var lr = l.replace(/([?]|[?&]__csrf=)[a-z0-9._-]{80,}$/i,'');
+// if(l != lr) history.replaceState({},'',lr); 
 
  var isrelated = function(x){
   return x.substr(x.length-topdomain.length)==topdomain;
@@ -15,6 +21,7 @@
   if(parser.protocol != 'https:') return false;
   if(!isrelated(parser.hostname)) return false;
   if(parser.origin == loginorigin) return false;
+  if(!parser.pathname.match(apaths)) return false;
   return parser.href;
  }
 

@@ -11,13 +11,18 @@ var djcl = require('./djcl.js');
 var conf = require('./config.js');
 
 var loginorigin = 'https://'+conf.login_domain+(conf.local_port!=443?':'+conf.local_port:'');
+if(!conf.authenticated_paths) conf.authenticated_paths = /.*/;
+
 var loginscript = fs.readFileSync('login.js').toString('utf-8');
+
 var injected = fs.readFileSync('csrf.js').toString('utf-8')
                  .replace('@LOGIN_ORIGIN@', loginorigin)
+                 .replace('@AUTHENTICATED_PATHS@', conf.authenticated_paths.toString())
                  .replace('@TOP_DOMAIN@',conf.topdomain);
-var frame = fs.readFileSync('csrf.html');
 
-/*********** END OF CONFIGURATION ***************/
+var frame = fs.readFileSync('csrf.html').toString('utf-8')
+                 .replace('@SESSION_LIFETIME@',conf.session_lifetime)
+                 .replace('@SIGNATURE_LIFETIME@',conf.signature_lifetime);
 
 var DB = {};
 var login = url.parse(conf.login_page);
@@ -137,8 +142,8 @@ srv.on('request', function (req, res) {
        });
 
        if(SID)
-        DB[SID] = {key: fields.__csrfKey__, time: new Date()};
-       console.dir(DB);
+        DB[SID] = {key: fields.__csrfKey__, time: new Date().valueOf()};
+       console.log('Adding SID '+SID+' with key '+fields.__csrfKey__);
 
        var to = url.parse(r.headers['location']);
        delete to.host;
@@ -146,12 +151,16 @@ srv.on('request', function (req, res) {
        to.protocol = 'https:';
        to.port = conf.local_port;
        to = url.format(to);
-       r.headers['location'] = to+'?'+djcl.JWT.create('GET|'+to,DB[SID].key);
+
+       r.headers['location'] = to + '?' + djcl.JWT.create(
+        'GET|' + (new Date().valueOf() + 1000*conf.session_lifetime)
+        + '|' + to, DB[SID].key
+       );
       }
 
       r.headers['x-frame-options'] = 'deny';
       r.headers['strict-transport-security'] = 'max-age=9999999;';
-      r.headers['content-security-policy-report-only'] = conf.login_csp.replace('000000000000',nonce);
+      r.headers['content-security-policy-report-only'] = conf.login_csp.replace('@NONCE@',nonce);
 
       res.writeHead(r.statusCode, "OK", r.headers);
 
@@ -160,7 +169,7 @@ srv.on('request', function (req, res) {
       }).on('end', function(){
        res.end(failed ?
         '<script nonce="'+nonce+'">'
-        +loginscript.replace("00000000000000000000000000000000",key)
+        +loginscript.replace("@CSRF_KEY@",key).replace("@SERVER_TIME@",new Date().valueOf())
         +"</script>"
        : undefined);
       });
@@ -190,26 +199,32 @@ srv.on('request', function (req, res) {
     filtered += c+';';
   });
 
-  if(!conf.authenticated_paths || u.pathname.match(conf.authenticated_paths))
+  if(u.pathname.match(conf.authenticated_paths))
   {
    var m = req.url.match(/([?]|[?&]__csrf=)([a-zA-Z0-9._-]{80,})$/);
    if(m)
    {
     req.url = req.url.replace(m[0], '');
+    var rurl = "https://" + host + req.url;
     m = m[2];
 
-    var o = req.method+"|https://"+host+req.url;
+    var chkS = function(sig) {
+     var m = sig.match(/^(GET|POST)[|]([0-9]+)[|](.*)$/);
+     if(!m) return false;
+     if(m[1] != req.method) return false;
+     if(m[2] < new Date().valueOf()) return false;
+     return m[3] == "https://"+host+req.url;
+    };
     var sig = djcl.JWT.parse(m, SID in DB ? DB[SID].key : '');
 
-    if(SID && SID in DB && sig.valid && sig.claims === o)
+    if(SID && SID in DB && sig.valid && chkS(sig.claims))
     {
-     console.log('Correct signature '+m+' for '+o+' with '+DB[SID].key);
+     console.log('Correct signature ' + m + ' for ' + rurl + ' with ' + DB[SID].key);
      authenticated = true;
     }
     else
     {
-     console.log('Bad signature ' + m + ' for ' + o + ' with ' + (SID in DB ? DB[SID].key : '')+' of '+SID+('claims' in sig?': '+sig.claims:''));
-     console.dir(DB);
+     console.log('Bad signature ' + m + ' for ' + rurl + ' with ' + (SID in DB ? DB[SID].key : '')+' of '+SID+('claims' in sig?': '+sig.claims:''));
     }
    }
   }
@@ -221,7 +236,8 @@ srv.on('request', function (req, res) {
     opt.headers = req.headers;
     delete opt.headers['accept-encoding'];
 
-    (opt.protocol == 'http:' ? http : https).request(opt, function(r){
+    var ProxyReq =
+     (opt.protocol == 'http:' ? http : https).request(opt, function(r){
      r.setEncoding('utf8');
      delete r.headers['content-length'];
      var result = "";
@@ -232,6 +248,7 @@ srv.on('request', function (req, res) {
       res.writeHead(r.statusCode, "OK", r.headers);
       if(r.headers['content-type'].match(/text\/html/i))
       {
+       var now = new Date().valueOf();
        jsdom.env(result, [],
 //        ["http://code.jquery.com/jquery.js"],
         function (errors, window) {
@@ -251,22 +268,28 @@ srv.on('request', function (req, res) {
              if(o.hostname.substr(o.hostname.length-tld.length)==tld)
               {
                var m = (x == 'action' && n[i].method.toUpperCase()=='POST')?'POST':'GET';
-               m += '|' + url.format(o);
+               var expire = now + 1000 * conf.signature_lifetime;
+               m += '|' + expire + '|' + url.format(o);
                n[i].setAttribute(x,
                  url.format(o)+'?'+encodeURIComponent(djcl.JWT.create(m, DB[SID].key))
                );
               }
            }
           });
-          var i = window.document.createElement('iframe');
+          var doc = window.document;
+          var h = doc.head ? doc.head : doc.body;
+
+          var i = doc.createElement('iframe');
           i.src = loginorigin + '/csrf-frame';
           i.style.display = 'none';
           i.id = 'csrf-frame';
-          window.document.body.appendChild(i);
-          var i = window.document.createElement('script');
+          doc.body.appendChild(i);
+
+          var i = doc.createElement('script');
           i.src = loginorigin + '/injected.js';
-          window.document.head.insertBefore(i, window.document.head.firstChild);
-          res.end(window.document.innerHTML);
+          h.insertBefore(i, h.firstChild);
+          res.end(doc.innerHTML);
+
           return;
          }
          else
@@ -280,7 +303,26 @@ srv.on('request', function (req, res) {
        return;
       }
      });
-    }).end(req.method == 'POST' ? body : undefined);
+    });
+
+    if(req.method == 'POST')
+    {
+     var body = '';
+     req.on('data', function (c) {
+      body += c;
+      if(body.length > conf.max_post_size){
+       req.connection.destroy();
+       body = '';
+       return;
+      }
+     });
+     req.on('end', function() {
+      ProxyReq.end(body);
+     });
+    }
+    else
+     ProxyReq.end();
+
    return;
   }
   else

@@ -22,7 +22,7 @@ if(isset($_GET['ajax']))
 
 if(isset($_POST['a']) && $login)
 {
- die("Success! Wire of ".(int)$_POST['a']);
+ die("<h1>Success!</h1><p>Wire of ".(int)$_POST['a'].' sent</p><a href="/">Back</a>');
 }
 ?><!doctype html>
 <html>
@@ -53,10 +53,12 @@ Make wire transfer: <input type="text" size="10" name="a" /><br />
 <input type="button" value="Add field" onclick="var a = document.createElement('input');a.type='text';a.name='field'+(1000*Math.random()|0);document.getElementById('gf').appendChild(a);" />
 <input type="submit" />
 </form>
+<pre>Current GET parameters: <?=htmlspecialchars(var_export($_GET,1))?></pre>
 </fieldset>
 
 <fieldset><legend>Dynamic DOM mutations</legend>
-<input type="text" value="/test" size="50" id="v" />
+<p>N.B. The authenticated_paths configuration may affect the rewriting of inserted links</p>
+<input type="text" value="/test.php" size="50" id="v" />
 <input type="button" value="Insert link" onclick="var x = document.getElementById('v').value;var a = document.createElement('a');a.href=x;a.innerHTML='Test link<br />';document.getElementById('t').appendChild(a);" />
 <p id="t">
 
@@ -64,8 +66,9 @@ Make wire transfer: <input type="text" size="10" name="a" /><br />
 </fieldset>
 
 <fieldset><legend>XMLHttpRequest</legend>
-<textarea rows="5" id="ajaxr"></textarea><br />
-<input type="button" value="Run authenticated AJAX" onclick="var x = new XMLHttpRequest();x.open('GET','/?ajax');x.onload=function(){document.getElementById('ajaxr').value=x.responseText};x.send()" />
+<p><input type="text" id="ajp" value="/?ajax" placeholder="Path of AJAX" /></p>
+<textarea rows="5" id="ajaxr" placeholder="Result of AJAX"></textarea><br />
+<input type="button" value="Run authenticated AJAX" onclick="var x = new XMLHttpRequest();x.open('GET',document.getElementById('ajp').value);x.onload=function(){document.getElementById('ajaxr').value=x.responseText};x.send()" />
 </fieldset>
 <p>
 <a href='login.php?logout'>Logout</a>

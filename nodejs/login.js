@@ -1,7 +1,8 @@
 //window.addEventListener('load',
 (function(){
  var c = document.getElementsByTagName('form');
- var key = "00000000000000000000000000000000";
+ var key = "@CSRF_KEY@";
+ var timeDrift = @SERVER_TIME@ - new Date().valueOf();
 
  for(var i = 0; i < c.length; i++)
  {
@@ -24,6 +25,8 @@
   document.forms[i].addEventListener('submit',
    function(){
     localStorage.CSRF = key;
+    localStorage.created = new Date().valueOf();
+    localStorage.drift = timeDrift;
    }
   );
  }
